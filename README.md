@@ -1,8 +1,8 @@
 # WebODM
 
-[![Build Status](https://travis-ci.org/OpenDroneMap/WebODM.svg?branch=master)](https://travis-ci.org/OpenDroneMap/WebODM)
+[![Build Status](https://travis-ci.org/OpenDroneMap/WebODM.svg?branch=master)](https://travis-ci.org/OpenDroneMap/WebODM) [![Join Gitter Chat](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/OpenDroneMap/web-development) [![GitHub version](https://badge.fury.io/gh/OpenDroneMap%2FWebODM.svg)](https://badge.fury.io/gh/OpenDroneMap%2FWebODM)
 
-A free, user-friendly, extendable application and [API](https://opendronemap.github.io/WebODM/) for drone image processing. Generate georeferenced maps, point clouds and textured 3D models from aerial images. It uses [OpenDroneMap](https://github.com/OpenDroneMap/OpenDroneMap) for processing.
+A free, user-friendly, extendable application and [API](http://docs.webodm.org) for drone image processing. Generate georeferenced maps, point clouds and textured 3D models from aerial images. It uses [OpenDroneMap](https://github.com/OpenDroneMap/OpenDroneMap) for processing.
 
 * [Getting Started](#getting-started)
     * [Common Troubleshooting](#common-troubleshooting)
@@ -14,6 +14,8 @@ A free, user-friendly, extendable application and [API](https://opendronemap.git
  * [OpenDroneMap, node-OpenDroneMap, WebODM... what?](#opendronemap-node-opendronemap-webodm-what)
  * [Roadmap](#roadmap)
  * [Terminology](#terminology)
+ * [Getting Help](#getting-help)
+ 
 
 ![Alt text](/screenshots/ui-mockup.png?raw=true "WebODM")
 
@@ -23,7 +25,7 @@ A free, user-friendly, extendable application and [API](https://opendronemap.git
 
 [![WebODM - An Introduction to a Web Interface for OpenDroneMap to Make Drone Mapping Even Easier](https://img.youtube.com/vi/UnN-NzL96T8/0.jpg)](https://www.youtube.com/watch?v=UnN-NzL96T8 "WebODM - An Introduction to a Web Interface for OpenDroneMap to Make Drone Mapping Even Easier")
 
-If you know Python, web technologies (JS, HTML, CSS, etc.) or both, it's easy to make a change to WebODM! Make a fork, clone the repository and run `./devenv.sh start`. That's it! See the [Development Quickstart](https://opendronemap.github.io/WebODM/#development-quickstart) and [Contributing](/CONTRIBUTING.md) documents for more information. All ideas are considered and people of all skill levels are welcome to contribute.
+If you know Python, web technologies (JS, HTML, CSS, etc.) or both, it's easy to make a change to WebODM! Make a fork, clone the repository and run `./devenv.sh start`. That's it! See the [Development Quickstart](http://docs.webodm.org/#development-quickstart) and [Contributing](/CONTRIBUTING.md) documents for more information. All ideas are considered and people of all skill levels are welcome to contribute.
 
 ## Getting Started
 
@@ -48,7 +50,6 @@ docker-machine ip
 Linux / Mac, users can connect to 127.0.0.1.
 
 * Open a Web Browser to `http://<yourDockerMachineIp>:8000`
-* Log in with the default credentials: "admin:admin"
 
 To stop WebODM press CTRL+C or run:
 
@@ -64,6 +65,8 @@ To update WebODM to the latest version use:
 
 We recommend that you read the [Docker Documentation](https://docs.docker.com/) to familiarize with the application lifecycle, setup and teardown, or for more advanced uses. Look at the contents of the webodm.sh script to understand what commands are used to launch WebODM.
 
+For Windows users an [Installer](https://www.webodm.org/installer) is also available.
+
 ### Common Troubleshooting
 
 Sympthoms | Possible Solutions
@@ -74,6 +77,7 @@ After an update, you get: `django.contrib.auth.models.DoesNotExist: Permission m
 Task fails with `Process exited with code null`, no task console output | If the computer running node-opendronemap is using an old or 32bit CPU, you need to compile [OpenDroneMap](https://github.com/OpenDroneMap/OpenDroneMap) from sources and setup node-opendronemap natively. You cannot use docker. Docker images work with CPUs with 64-bit extensions, MMX, SSE, SSE2, SSE3 and SSSE3 instruction set support or higher.
 On Windows, docker-compose fails with `Failed to execute the script docker-compose` | Make sure you have enabled VT-x virtualization in the BIOS
 Cannot access WebODM using Microsoft Edge on Windows 10 | Try to tweak your internet properties according to [these instructions](http://www.hanselman.com/blog/FixedMicrosoftEdgeCantSeeOrOpenVirtualBoxhostedLocalWebSites.aspx)
+Getting a `No space left on device` error, but hard drive has enough space left | Docker on Windows by default will allocate only 20GB of space to the default docker-machine. You need to increase that amount. See [this link](http://support.divio.com/local-development/docker/managing-disk-space-in-your-docker-vm) and [this link](https://www.howtogeek.com/124622/how-to-enlarge-a-virtual-machines-disk-in-virtualbox-or-vmware/)
 
 Have you had other issues? Please [report them](https://github.com/OpenDroneMap/WebODM/issues/new) so that we can include them in this document.
 
@@ -83,11 +87,11 @@ WebODM can be linked to one or more processing nodes running [node-OpenDroneMap]
 
 ### Security
 
-If you want to run WebODM in production, make sure to change the `SECRET_KEY` variable in `webodm/settings.py`, as well as any other relevant setting as indicated in the [Django Deployment Checklist](https://docs.djangoproject.com/en/1.10/howto/deployment/checklist/).
+If you want to run WebODM in production, make sure to disable the `DEBUG` flag from `webodm/settings.py` and go through the [Django Deployment Checklist](https://docs.djangoproject.com/en/1.10/howto/deployment/checklist/).
 
 ## API Docs
 
-See the [API documentation page](https://opendronemap.github.io/WebODM/).
+See the [API documentation page](http://docs.webodm.org).
 
 ## Run the docker version as a Linux Service
 
@@ -135,17 +139,22 @@ screen -r webodm
 
 ## Run it natively
 
-If you want to run WebODM natively, you will need to install:
+WebODM can run natively on Windows, MacOS and Linux.
+
+Ubuntu 16.04 LTS users can refer to [this script](/contrib/ubuntu_1604_install.sh) to install WebODM natively on a new machine.
+
+To run WebODM, you will need to install:
  * PostgreSQL (>= 9.5)
  * PostGIS 2.3
  * Python 3.5
  * GDAL (>= 2.1)
  * Node.js (>= 6.0)
+ * Nginx (Linux/MacOS) - OR - Apache + mod_wsgi (Windows)
 
 On Linux, make sure you have:
 
 ```bash
-apt-get install binutils libproj-dev gdal-bin
+apt-get install binutils libproj-dev gdal-bin nginx
 ```
 
 On Windows use the [OSGeo4W](https://trac.osgeo.org/osgeo4w/) installer to install GDAL. MacOS users can use:
@@ -160,7 +169,7 @@ Then these steps should be sufficient to get you up and running:
 git clone https://github.com/OpenDroneMap/WebODM
 ```
 
-Create a `WebODM\webodm\local_settings.py` file containing your database settings:
+Create a `WebODM/webodm/local_settings.py` file containing your database settings:
 
 ```python
 DATABASES = {
@@ -189,7 +198,18 @@ pip install -r requirements.txt
 sudo npm install -g webpack
 npm install
 webpack
-chmod +x start.sh && ./start.sh
+python manage.py collectstatic --noinput
+chmod +x start.sh && ./start.sh --no-gunicorn
+```
+
+The `start.sh` script will use Django's built-in server if you pass the `--no-gunicorn` parameter. This is good for testing, but bad for production. 
+
+In production, if you have nginx installed, modify the configuration file in `nginx/nginx.conf` to match your system's configuration and just run `start.sh` without parameters. 
+
+Windows users should refer to [this guide](https://docs.djangoproject.com/en/1.11/howto/deployment/wsgi/modwsgi/) to install Apache + mod_wsgi and run gunicorn:
+
+```bash
+gunicorn webodm.wsgi --bind 0.0.0.0:8000 --preload
 ```
 
 If you are getting a `rt_raster_gdal_warp: Could not create GDAL transformation object for output dataset creation`, make sure that your PostGIS installation has PROJ support:
@@ -216,8 +236,6 @@ npm --version
 gdalinfo --version
 ```
 Should all work without errors.
-
-Ubuntu 16.04 LTS users can refer to this [script](https://gist.githubusercontent.com/lkpanganiban/5226cc8dd59cb39cdc1946259c3fea6e/raw/f9f41ad0c1dfdd2d26a452d3b2732dbaf3fd3608/webodm_install.sh) to install WebODM natively on a new machine.
 
 ## OpenDroneMap, node-OpenDroneMap, WebODM... what?
 
@@ -246,6 +264,7 @@ Developer, I'm looking to build an app that will stay behind a firewall and just
 - [X] Task Processing
 - [X] 2D Map Display 
 - [X] 3D Model Display
+- [ ] NDVI display
 - [ ] Volumetric Measurements
 - [X] Cluster management and setup.
 - [ ] Mission Planner
@@ -267,3 +286,11 @@ Don't see a feature that you want? [Help us make it happen](/CONTRIBUTING.md).
  - `ImageUpload`: aerial images.
  - `Mission`: A flight path and other information (overlap %, angle, ...) associated with a particular `Task`.
 
+## Getting Help
+
+We have several channels of communication for people to ask questions and to get involved with the community:
+
+ - [Gitter](https://gitter.im/OpenDroneMap/web-development)
+ - [GitHub Issues](https://github.com/OpenDroneMap/WebODM/issues)
+ - [OpenDroneMap Users Mailing List](https://lists.osgeo.org/mailman/listinfo/opendronemap-users)
+ - [OpenDroneMap Developers Mailing List](https://lists.osgeo.org/mailman/listinfo/opendronemap-dev)

@@ -1,8 +1,7 @@
 import django_filters
-from django.core.exceptions import ObjectDoesNotExist
 from django_filters.rest_framework import FilterSet
 from guardian.shortcuts import get_objects_for_user
-from rest_framework import serializers, viewsets, exceptions
+from rest_framework import serializers, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -20,10 +19,10 @@ class ProcessingNodeSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class ProcessingNodeFilter(FilterSet):
-    has_available_options = django_filters.MethodFilter()
+    has_available_options = django_filters.CharFilter(method='filter_has_available_options')
 
     # noinspection PyMethodMayBeStatic
-    def filter_has_available_options(self, queryset, value):
+    def filter_has_available_options(self, queryset, name, value):
         if value.lower() in ['true', '1']:
             return queryset.exclude(available_options=dict())
         else:

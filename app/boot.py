@@ -1,4 +1,3 @@
-from django.contrib.contenttypes.models import ContentType
 from django.contrib.auth.models import Permission
 from django.contrib.auth.models import User, Group
 from django.core.exceptions import ObjectDoesNotExist
@@ -6,14 +5,25 @@ from django.db.utils import ProgrammingError
 from guardian.shortcuts import assign_perm
 
 from nodeodm.models import ProcessingNode
-from . import signals, scheduler
-import logging, os
+# noinspection PyUnresolvedReferences
+from . import scheduler, signals
+import logging
 from .models import Task
 from webodm import settings
+from webodm.wsgi import booted
 
 
 def boot():
+    # booted is a shared memory variable to keep track of boot status
+    # as multiple workers could trigger the boot sequence twice
+    if not settings.DEBUG and booted.value: return
+
+    booted.value = True
     logger = logging.getLogger('app.logger')
+    logger.info("Booting...")
+
+    if settings.DEBUG:
+       logger.warning("Debug mode is ON (for development this is OK)")
 
     # Check default group
     try:
@@ -39,11 +49,6 @@ def boot():
 
         # Add permission to view processing nodes
         default_group.permissions.add(Permission.objects.get(codename="view_processingnode"))
-
-        # Check super user
-        if User.objects.filter(is_superuser=True).count() == 0:
-            User.objects.create_superuser('admin', 'admin@example.com', 'admin')
-            logger.info("Created superuser")
 
         # Unlock any Task that might have been locked
         Task.objects.filter(processing_lock=True).update(processing_lock=False)

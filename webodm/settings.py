@@ -13,6 +13,8 @@ https://docs.djangoproject.com/en/1.10/ref/settings/
 import os, sys
 
 import datetime
+
+import tzlocal
 from django.contrib.messages import constants as messages
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
@@ -22,11 +24,29 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/1.10/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'gmarsutd!fee6_58=6k)2je#o2^&&)ovu1svjg8k^(a!7qa7r&'
+try:
+    from .secret_key import SECRET_KEY
+except ImportError:
+    # This will be executed the first time Django runs
+    # It generates a secret_key.py file that contains the SECRET_KEY
+    from django.utils.crypto import get_random_string
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+    current_dir = os.path.abspath(os.path.dirname(__file__))
+    chars = 'abcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*(-_=+)'
+    with open(os.path.join(current_dir, 'secret_key.py'), 'w') as f:
+        f.write("SECRET_KEY='{}'".format(get_random_string(50, chars)))
+
+    from .secret_key import SECRET_KEY
+    print("Generated secret key")
+
+
+
+TESTING = sys.argv[1:2] == ['test']
+
+# SECURITY WARNING: don't run with debug turned on a public facing server!
+# We are leaving DEBUG turned on for the sake of making error reporting easier
+# since we haven't reached a stable release yet.
+DEBUG = True #sys.argv[1:2] == ['runserver'] or TESTING
 INTERNAL_IPS = ['127.0.0.1']
 
 ALLOWED_HOSTS = ['*']
@@ -42,6 +62,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django.contrib.gis',
+    'django_filters',
     'guardian',
     'rest_framework',
     'rest_framework_nested',
@@ -132,7 +153,7 @@ AUTHENTICATION_BACKENDS = (
 # https://docs.djangoproject.com/en/1.10/topics/i18n/
 
 LANGUAGE_CODE = 'en-us'
-TIME_ZONE = None # Use local server time
+TIME_ZONE = tzlocal.get_localzone().zone
 USE_I18N = True
 USE_L10N = True
 USE_TZ = True
@@ -142,10 +163,19 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/1.10/howto/static-files/
 
 STATIC_URL = '/static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'build', 'static')
 STATICFILES_DIRS = [
     os.path.join(BASE_DIR, 'app', 'static'),
 ]
 
+# File Uploads
+FILE_UPLOAD_MAX_MEMORY_SIZE = 4718592 # 4.5 MB
+DATA_UPLOAD_MAX_NUMBER_FIELDS = None
+
+FILE_UPLOAD_HANDLERS = [
+    'django.core.files.uploadhandler.MemoryFileUploadHandler',
+    'app.uploadhandler.TemporaryFileUploadHandler', # Ours doesn't keep file descriptors open by default
+]
 
 # Webpack
 WEBPACK_LOADER = {
@@ -239,7 +269,6 @@ JWT_AUTH = {
     'JWT_EXPIRATION_DELTA': datetime.timedelta(hours=6),
 }
 
-TESTING = sys.argv[1:2] == ['test']
 if TESTING:
     MEDIA_ROOT = os.path.join(BASE_DIR, 'app', 'media_test')
 

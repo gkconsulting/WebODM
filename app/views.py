@@ -1,16 +1,26 @@
 import json
 
+from django.contrib.auth import login
+from django.contrib.auth.hashers import make_password
+from django.contrib.auth.models import User
 from django.http import Http404
 from django.shortcuts import render, redirect, get_object_or_404
-from django.http import HttpResponse
+from guardian.shortcuts import get_objects_for_user
+
 from nodeodm.models import ProcessingNode
 from .models import Project, Task
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.utils.translation import ugettext as _
+from django import forms
 
 def index(request):
-    return redirect('dashboard' if request.user.is_authenticated() 
+    # Check first access where the user is expected to
+    # create an admin account
+    if User.objects.filter(is_superuser=True).count() == 0:
+        return redirect('welcome')
+
+    return redirect('dashboard' if request.user.is_authenticated()
                     else 'login')
 
 @login_required
@@ -22,9 +32,10 @@ def dashboard(request):
     if Project.objects.filter(owner=request.user).count() == 0:
         Project.objects.create(owner=request.user, name=_("First Project"))
 
-    return render(request, 'app/dashboard.html', {'title': 'Dashboard', 
+    return render(request, 'app/dashboard.html', {'title': 'Dashboard',
         'no_processingnodes': no_processingnodes,
-        'no_tasks': no_tasks})
+        'no_tasks': no_tasks
+    })
 
 
 @login_required
@@ -38,17 +49,18 @@ def map(request, project_pk=None, task_pk=None):
             raise Http404()
         
         if task_pk is not None:
-            task = get_object_or_404(Task.objects.defer('orthophoto'), pk=task_pk, project=project)
+            task = get_object_or_404(Task.objects.defer('orthophoto_extent', 'dsm_extent', 'dtm_extent'), pk=task_pk, project=project)
             title = task.name
-            tiles = [task.get_tile_json_data()]
+            mapItems = [task.get_map_items()]
         else:
             title = project.name
-            tiles = project.get_tile_json_data()
+            mapItems = project.get_map_items()
 
     return render(request, 'app/map.html', {
             'title': title,
             'params': {
-                'tiles': json.dumps(tiles)
+                'map-items': json.dumps(mapItems),
+                'title': title
             }.items()
         })
 
@@ -63,7 +75,7 @@ def model_display(request, project_pk=None, task_pk=None):
             raise Http404()
 
         if task_pk is not None:
-            task = get_object_or_404(Task.objects.defer('orthophoto'), pk=task_pk, project=project)
+            task = get_object_or_404(Task.objects.defer('orthophoto_extent', 'dsm_extent', 'dtm_extent'), pk=task_pk, project=project)
             title = task.name
         else:
             raise Http404()
@@ -74,7 +86,7 @@ def model_display(request, project_pk=None, task_pk=None):
             'task': json.dumps({
                 'id': task.id,
                 'project': project.id,
-                'available_assets': task.get_available_assets()
+                'available_assets': task.available_assets
             })
         }.items()
     })
@@ -92,3 +104,36 @@ def processing_node(request, processing_node_id):
                 'processing_node': pn,
                 'available_options_json': pn.get_available_options_json(pretty=True)
             })
+
+class FirstUserForm(forms.ModelForm):
+    class Meta:
+        model = User
+        fields = ('username', 'password', )
+        widgets = {
+            'password': forms.PasswordInput(),
+        }
+
+
+def welcome(request):
+    if User.objects.filter(is_superuser=True).count() > 0:
+        return redirect('index')
+
+    fuf = FirstUserForm()
+
+    if request.method == 'POST':
+        fuf = FirstUserForm(request.POST)
+        if fuf.is_valid():
+            admin_user = fuf.save(commit=False)
+            admin_user.password = make_password(fuf.cleaned_data['password'])
+            admin_user.is_superuser = admin_user.is_staff = True
+            admin_user.save()
+
+            # Log-in automatically
+            login(request, admin_user, 'django.contrib.auth.backends.ModelBackend')
+            return redirect('dashboard')
+
+    return render(request, 'app/welcome.html',
+                  {
+                      'title': 'Welcome',
+                      'firstuserform': fuf
+                  })

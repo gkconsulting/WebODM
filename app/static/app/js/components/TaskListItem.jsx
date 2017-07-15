@@ -164,14 +164,14 @@ class TaskListItem extends React.Component {
               if (options.success !== undefined) options.success();
             }else{
               this.setState({
-                actionError: json.error,
+                actionError: json.error || options.defaultError || "Cannot complete operation.",
                 actionButtonsDisabled: false
               });
             }
         })
         .fail(() => {
             this.setState({
-              error: url + " is unreachable.",
+              actionError: options.defaultError || "Cannot complete operation.",
               actionButtonsDisabled: false
             });
         });
@@ -257,7 +257,7 @@ class TaskListItem extends React.Component {
 
     let expanded = "";
     if (this.state.expanded){
-      let showGeotiffMissingWarning = false,
+      let showOrthophotoMissingWarning = false,
           showMemoryErrorWarning = this.state.memoryError && task.status == statusCodes.FAILED,
           showExitedWithCodeOneHints = task.last_error === "Process exited with code 1" && !showMemoryErrorWarning && task.status == statusCodes.FAILED,
           memoryErrorLink = this.isMacOS() ? "http://stackoverflow.com/a/39720010" : "https://docs.docker.com/docker-for-windows/#advanced";
@@ -270,12 +270,12 @@ class TaskListItem extends React.Component {
       };
       
       if (task.status === statusCodes.COMPLETED){
-        if (task.available_assets.indexOf("geotiff") !== -1){
-          addActionButton(" View Orthophoto", "btn-primary", "fa fa-globe", () => {
+        if (task.available_assets.indexOf("orthophoto.tif") !== -1){
+          addActionButton(" View Map", "btn-primary", "fa fa-globe", () => {
             location.href = `/map/project/${task.project}/task/${task.id}/`;
           });
         }else{
-          showGeotiffMissingWarning = true;
+          showOrthophotoMissingWarning = true;
         }
         
         addActionButton(" View 3D Model", "btn-primary", "fa fa-cube", () => {
@@ -293,22 +293,24 @@ class TaskListItem extends React.Component {
 
       if ([statusCodes.QUEUED, statusCodes.RUNNING, null].indexOf(task.status) !== -1 &&
           task.processing_node){
-        addActionButton("Cancel", "btn-primary", "glyphicon glyphicon-remove-circle", this.genActionApiCall("cancel"));
+        addActionButton("Cancel", "btn-primary", "glyphicon glyphicon-remove-circle", this.genActionApiCall("cancel", {defaultError: "Cannot cancel task."}));
       }
 
       if ([statusCodes.FAILED, statusCodes.COMPLETED, statusCodes.CANCELED].indexOf(task.status) !== -1 &&
             task.processing_node){
           addActionButton("Restart", "btn-primary", "glyphicon glyphicon-remove-circle", this.genActionApiCall("restart", {
-            success: () => {
-                if (this.console) this.console.clear();
-                this.setState({time: -1});
-              }
+              success: () => {
+                  if (this.console) this.console.clear();
+                  this.setState({time: -1});
+              },
+              defaultError: "Cannot restart task."
             }
           ));
       }
 
       addActionButton("Delete", "btn-danger", "glyphicon glyphicon-trash", this.genActionApiCall("remove", {
-        confirm: "All information related to this task, including images, maps and models will be deleted. Continue?"
+        confirm: "All information related to this task, including images, maps and models will be deleted. Continue?",
+        defaultError: "Cannot delete task."
       }));
 
       const disabled = this.state.actionButtonsDisabled || !!task.pending_action;
@@ -345,8 +347,8 @@ class TaskListItem extends React.Component {
               : ""}
               {/* TODO: List of images? */}
 
-              {showGeotiffMissingWarning ? 
-              <div className="task-warning"><i className="fa fa-warning"></i> <span>An orthophoto could not be generated. To generate one, make sure GPS information is embedded in the EXIF tags of your images.</span></div> : ""}
+              {showOrthophotoMissingWarning ? 
+              <div className="task-warning"><i className="fa fa-warning"></i> <span>An orthophoto could not be generated. To generate one, make sure GPS information is embedded in the EXIF tags of your images, or use a Ground Control Points (GCP) file.</span></div> : ""}
 
             </div>
             <div className="col-md-8">
