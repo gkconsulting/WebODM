@@ -18,7 +18,8 @@ from rest_framework.test import APIClient
 from app import pending_actions
 from app import scheduler
 from django.utils import timezone
-from app.models import Project, Task, ImageUpload, task_directory_path, full_task_directory_path
+from app.models import Project, Task, ImageUpload
+from app.models.task import task_directory_path, full_task_directory_path
 from app.tests.classes import BootTransactionTestCase
 from nodeodm import status_codes
 from nodeodm.models import ProcessingNode, OFFLINE_MINUTES
@@ -147,10 +148,13 @@ class TestApiTask(BootTransactionTestCase):
         # Should have returned the id of the newly created task
         task = Task.objects.latest('created_at')
         self.assertTrue('id' in res.data)
-        self.assertTrue(task.id == res.data['id'])
+        self.assertTrue(str(task.id) == res.data['id'])
 
         # Two images should have been uploaded
         self.assertTrue(ImageUpload.objects.filter(task=task).count() == 2)
+
+        # Can_rerun_from should be an empty list
+        self.assertTrue(len(res.data['can_rerun_from']) == 0)
 
         # No processing node is set
         self.assertTrue(task.processing_node is None)
@@ -162,7 +166,7 @@ class TestApiTask(BootTransactionTestCase):
             self.assertTrue(res.status_code == status.HTTP_400_BAD_REQUEST)
 
         # Neither should an individual tile
-        # Z/X/Y coords are choosen based on node-odm test dataset for orthophoto_tiles/
+        # Z/X/Y coords are chosen based on node-odm test dataset for orthophoto_tiles/
         res = client.get("/api/projects/{}/tasks/{}/orthophoto/tiles/16/16020/42443.png".format(project.id, task.id))
         self.assertTrue(res.status_code == status.HTTP_404_NOT_FOUND)
 
@@ -208,6 +212,17 @@ class TestApiTask(BootTransactionTestCase):
         self.assertTrue(task.status in [status_codes.RUNNING, status_codes.COMPLETED]) # Sometimes the task finishes and we can't test for RUNNING state
         self.assertTrue(len(task.uuid) > 0)
 
+        # Processing node should have a "rerun_from" option
+        pnode_rerun_from_opts = list(filter(lambda d: 'name' in d and d['name'] == 'rerun-from', pnode.available_options))[0]
+        self.assertTrue(len(pnode_rerun_from_opts['domain']) > 0)
+
+        # The can_rerun_from field of a task should now be populated
+        # with the same values as the "rerun_from" domain values of
+        # the processing node
+        res = client.get("/api/projects/{}/tasks/{}/".format(project.id, task.id))
+        self.assertTrue(res.status_code == status.HTTP_200_OK)
+        self.assertTrue(pnode_rerun_from_opts['domain'] == res.data['can_rerun_from'])
+
         time.sleep(DELAY)
 
         # Calling process pending tasks should finish the process
@@ -242,6 +257,39 @@ class TestApiTask(BootTransactionTestCase):
         for tile_type in tile_types:
             res = client.get("/api/projects/{}/tasks/{}/{}/tiles/16/16020/42443.png".format(project.id, task.id, tile_type))
             self.assertTrue(res.status_code == status.HTTP_200_OK)
+
+        # Another user does not have access to the resources
+        other_client = APIClient()
+        other_client.login(username="testuser2", password="test1234")
+
+        def accessResources(expectedStatus):
+            for tile_type in tile_types:
+                res = other_client.get("/api/projects/{}/tasks/{}/{}/tiles.json".format(project.id, task.id, tile_type))
+                self.assertTrue(res.status_code == expectedStatus)
+
+            res = other_client.get("/api/projects/{}/tasks/{}/{}/tiles/16/16020/42443.png".format(project.id, task.id, tile_type))
+            self.assertTrue(res.status_code == expectedStatus)
+
+        accessResources(status.HTTP_404_NOT_FOUND)
+
+        # Original owner enables sharing
+        res = client.patch("/api/projects/{}/tasks/{}/".format(project.id, task.id), {
+            'public': True
+        })
+        self.assertTrue(res.status_code == status.HTTP_200_OK)
+
+        # Now other user can acccess resources
+        accessResources(status.HTTP_200_OK)
+
+        # User logs out
+        other_client.logout()
+
+        # He can still access the resources as anonymous
+        accessResources(status.HTTP_200_OK)
+
+        # Other user still does not have access to certain parts of the API
+        res = other_client.get("/api/projects/{}/tasks/{}/".format(project.id, task.id))
+        self.assertTrue(res.status_code == status.HTTP_403_FORBIDDEN)
 
         # Restart a task
         testWatch.clear()
@@ -327,8 +375,31 @@ class TestApiTask(BootTransactionTestCase):
         self.assertTrue(task.status == status_codes.COMPLETED)
 
 
-        # Test connection, timeout errors
+        # Test rerun-from clearing mechanism:
+
+        # 1 .Set some task options, including rerun_from
+        task.options = [{'name': 'mesh-size', 'value':1000},
+                        {'name': 'rerun-from', 'value': 'odm_meshing'}]
+        task.save()
+
+        # 2. Remove the task directly from node-odm (simulate a task purge)
+        self.assertTrue(task.processing_node.remove_task(task.uuid))
+
+        # 3. Restart the task
         res = client.post("/api/projects/{}/tasks/{}/restart/".format(project.id, task.id))
+        self.assertTrue(res.status_code == status.HTTP_200_OK)
+        task.refresh_from_db()
+        self.assertTrue(task.pending_action == pending_actions.RESTART)
+
+        # 4. Check that the rerun_from parameter has been cleared
+        #   but the other parameters are still set
+        scheduler.process_pending_tasks()
+        task.refresh_from_db()
+        self.assertTrue(len(task.uuid) == 0)
+        self.assertTrue(len(list(filter(lambda d: d['name'] == 'rerun-from', task.options))) == 0)
+        self.assertTrue(len(list(filter(lambda d: d['name'] == 'mesh-size', task.options))) == 1)
+
+        # Test connection, timeout errors
         def connTimeout(*args, **kwargs):
             raise requests.exceptions.ConnectTimeout("Simulated timeout")
 

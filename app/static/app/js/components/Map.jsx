@@ -14,7 +14,9 @@ import '../vendor/leaflet/Leaflet.Autolayers/leaflet-autolayers';
 import $ from 'jquery';
 import ErrorMessage from './ErrorMessage';
 import SwitchModeButton from './SwitchModeButton';
+import ShareButton from './ShareButton';
 import AssetDownloads from '../classes/AssetDownloads';
+import PropTypes from 'prop-types';
 
 class Map extends React.Component {
   static defaultProps = {
@@ -22,16 +24,18 @@ class Map extends React.Component {
     minzoom: 0,
     showBackground: false,
     opacity: 100,
-    mapType: "orthophoto"
+    mapType: "orthophoto",
+    public: false
   };
 
   static propTypes = {
-    maxzoom: React.PropTypes.number,
-    minzoom: React.PropTypes.number,
-    showBackground: React.PropTypes.bool,
-    tiles: React.PropTypes.array.isRequired,
-    opacity: React.PropTypes.number,
-    mapType: React.PropTypes.oneOf(['orthophoto', 'dsm', 'dtm'])
+    maxzoom: PropTypes.number,
+    minzoom: PropTypes.number,
+    showBackground: PropTypes.bool,
+    tiles: PropTypes.array.isRequired,
+    opacity: PropTypes.number,
+    mapType: PropTypes.oneOf(['orthophoto', 'dsm', 'dtm']),
+    public: PropTypes.bool
   };
 
   constructor(props) {
@@ -39,7 +43,7 @@ class Map extends React.Component {
     
     this.state = {
       error: "",
-      switchButtonTask: null // When this is set to a task, show a switch mode button to view the 3d model
+      singleTask: null // When this is set to a task, show a switch mode button to view the 3d model
     };
 
     this.imageryLayers = [];
@@ -48,6 +52,13 @@ class Map extends React.Component {
     this.autolayers = null;
 
     this.loadImageryLayers = this.loadImageryLayers.bind(this);
+    this.updatePopupFor = this.updatePopupFor.bind(this);
+    this.handleMapMouseDown = this.handleMapMouseDown.bind(this);
+  }
+
+  updatePopupFor(layer){
+    const popup = layer.getPopup();
+    $('#layerOpacity', popup.getContent()).val(layer.options.opacity);
   }
 
   loadImageryLayers(forceAddLayers = false){
@@ -55,7 +66,7 @@ class Map extends React.Component {
           assets = AssetDownloads.excludeSeparators(),
           layerId = layer => {
             const meta = layer[Symbol.for("meta")];
-            return meta.project + "_" + meta.task;
+            return meta.task.project + "_" + meta.task.id;
           };
 
     // Remove all previous imagery layers
@@ -98,13 +109,8 @@ class Map extends React.Component {
             }
 
             // Show 3D switch button only if we have a single orthophoto
-            const task = {
-              id: meta.task,
-              project: meta.project
-            };
-
             if (tiles.length === 1){
-              this.setState({switchButtonTask: task});
+              this.setState({singleTask: meta.task});
             }
 
             // For some reason, getLatLng is not defined for tileLayer?
@@ -113,21 +119,31 @@ class Map extends React.Component {
               return this.options.bounds.getCenter();
             };
 
-            layer.bindPopup(`<div class="title">${info.name}</div>
-              <div>Bounds: [${layer.options.bounds.toBBoxString().split(",").join(", ")}]</div>
-              <ul class="asset-links">
-                ${assets.map(asset => {
-                    return `<li><a href="${asset.downloadUrl(meta.project, meta.task)}">${asset.label}</a></li>`;
-                }).join("")}
-              </ul>
+            var popup = L.DomUtil.create('div', 'infoWindow');
 
-              <button 
-                onclick="location.href='/3d/project/${task.project}/task/${task.id}/';"
-                type="button"
-                class="switchModeButton btn btn-sm btn-default btn-white">
-                <i class="fa fa-cube"></i> 3D
-              </button>
-            `);
+            popup.innerHTML = `<div class="title">
+                                    ${info.name}
+                                </div>
+                                <div class="popup-opacity-slider">Opacity: <input id="layerOpacity" type="range" value="${layer.options.opacity}" min="0" max="1" step="0.01" /></div>
+                                <div>Bounds: [${layer.options.bounds.toBBoxString().split(",").join(", ")}]</div>
+                                    <ul class="asset-links">
+                                    ${assets.map(asset => {
+                                        return `<li><a href="${asset.downloadUrl(meta.task.project, meta.task.id)}">${asset.label}</a></li>`;
+                                    }).join("")}
+                                </ul>
+
+                                <button
+                                    onclick="location.href='/3d/project/${meta.task.project}/task/${meta.task.id}/';"
+                                    type="button"
+                                    class="switchModeButton btn btn-sm btn-secondary">
+                                    <i class="fa fa-cube"></i> 3D
+                                </button>`;
+
+            layer.bindPopup(popup);
+
+            $('#layerOpacity', popup).on('change input', function() {
+                layer.setOpacity($('#layerOpacity', popup).val());
+            });
             
             this.imageryLayers.push(layer);
 
@@ -213,6 +229,7 @@ class Map extends React.Component {
           // Find first tile layer at the selected coordinates 
           for (let layer of this.imageryLayers){
             if (layer._map && layer.options.bounds.contains(e.latlng)){
+              this.updatePopupFor(layer);
               layer.openPopup();
               break;
             }
@@ -224,6 +241,7 @@ class Map extends React.Component {
   componentDidUpdate(prevProps) {
     this.imageryLayers.forEach(imageryLayer => {
       imageryLayer.setOpacity(this.props.opacity / 100);
+      this.updatePopupFor(imageryLayer);
     });
 
     if (prevProps.tiles !== this.props.tiles){
@@ -242,16 +260,35 @@ class Map extends React.Component {
     }
   }
 
+  handleMapMouseDown(e){
+    // Make sure the share popup closes
+    this.shareButton.hidePopup();
+  }
+
   render() {
     return (
       <div style={{height: "100%"}} className="map">
         <ErrorMessage bind={[this, 'error']} />
         <div 
           style={{height: "100%"}}
-          ref={(domNode) => (this.container = domNode)}>
+          ref={(domNode) => (this.container = domNode)}
+          onMouseDown={this.handleMapMouseDown}
+          >
+        </div>
+        
+
+        <div className="actionButtons">
+          {(!this.props.public && this.state.singleTask !== null) ? 
+            <ShareButton 
+              ref={(ref) => { this.shareButton = ref; }}
+              task={this.state.singleTask} 
+              linksTarget="map"
+            />
+          : ""}
           <SwitchModeButton 
-            task={this.state.switchButtonTask}
-            type="mapToModel" />
+            task={this.state.singleTask}
+            type="mapToModel" 
+            public={this.props.public} />
         </div>
       </div>
     );

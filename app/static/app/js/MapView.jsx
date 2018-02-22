@@ -2,18 +2,21 @@ import React from 'react';
 import './css/MapView.scss';
 import Map from './components/Map';
 import $ from 'jquery';
+import PropTypes from 'prop-types';
 
 class MapView extends React.Component {
   static defaultProps = {
     mapItems: [],
     selectedMapType: 'orthophoto',
-    title: ""
+    title: "",
+    public: false
   };
 
   static propTypes = {
-      mapItems: React.PropTypes.array.isRequired, // list of dictionaries where each dict is a {mapType: 'orthophoto', url: <tiles.json>},
-      selectedMapType: React.PropTypes.oneOf(['orthophoto', 'dsm', 'dtm']),
-      title: React.PropTypes.string,
+      mapItems: PropTypes.array.isRequired, // list of dictionaries where each dict is a {mapType: 'orthophoto', url: <tiles.json>},
+      selectedMapType: PropTypes.oneOf(['orthophoto', 'dsm', 'dtm']),
+      title: PropTypes.string,
+      public: PropTypes.bool
   };
 
   constructor(props){
@@ -88,7 +91,7 @@ class MapView extends React.Component {
             <button 
               key={mapType.type}
               onClick={this.handleMapTypeButton(mapType.type)}
-              className={"btn btn-sm " + (mapType.type === this.state.selectedMapType ? "btn-default" : "btn-secondary")}>{mapType.label}</button>
+              className={"btn btn-sm " + (mapType.type === this.state.selectedMapType ? "btn-primary" : "btn-default")}>{mapType.label}</button>
           )}
         </div>
 
@@ -100,8 +103,9 @@ class MapView extends React.Component {
           tiles={this.state.tiles} 
           showBackground={true} 
           opacity={opacity}
-          mapType={this.state.selectedMapType} />
-        <div className="opacity-slider">
+          mapType={this.state.selectedMapType} 
+          public={this.props.public} />
+        <div className="opacity-slider theme-secondary">
           Opacity: <input type="range" step="1" value={opacity} onChange={this.updateOpacity} />
         </div>
       </div>);

@@ -1,14 +1,14 @@
 .task-list-item{
-    &:nth-child(odd){
-        background-color: #f7f7f7;
-    }
-
     .row{
         margin: 0;
         padding: 4px;
         padding-left: 8px;
 
         .no-padding{
+            padding: 0;
+        }
+
+        &.no-padding{
             padding: 0;
         }
     }
@@ -41,13 +41,6 @@
         padding: 4px;
         width: 100%;
         font-size: 90%;
-
-        &.done{
-            background-color: #cbffcd;
-        }
-        &.error{
-            background-color: #ffcbcb;
-        }
     }
 
     .clickable:hover{
@@ -80,9 +73,27 @@
                 margin-right: 4px;
             }
 
+            .btn-group{
+                button:first-child{
+                    margin-right: 0;
+                }
+            }
+
+            .edit-button{
+                margin-right: 15px;
+            }
+
             .asset-download-buttons{
                 margin-right: 4px;
             }
         }
+    }
+
+    .inline-block{
+        display: inline-block;
+    }
+
+    .inline{
+        display: inline;
     }
 }

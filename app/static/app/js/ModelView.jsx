@@ -4,6 +4,8 @@ import ErrorMessage from './components/ErrorMessage';
 import SwitchModeButton from './components/SwitchModeButton';
 import AssetDownloadButtons from './components/AssetDownloadButtons';
 import Standby from './components/Standby';
+import ShareButton from './components/ShareButton';
+import PropTypes from 'prop-types';
 import $ from 'jquery';
 
 const THREE = require('./vendor/potree/js/three'); // import does not work :/
@@ -14,11 +16,13 @@ import Potree from './vendor/potree';
 
 class ModelView extends React.Component {
   static defaultProps = {
-    task: null
+    task: null,
+    public: false
   };
 
   static propTypes = {
-      task: React.PropTypes.object.isRequired, // The object should contain two keys: {id: <taskId>, project: <projectId>}
+      task: PropTypes.object.isRequired, // The object should contain two keys: {id: <taskId>, project: <projectId>}
+      public: PropTypes.bool // Is the view being displayed via a shared link?
   };
 
   constructor(props){
@@ -34,6 +38,7 @@ class ModelView extends React.Component {
     this.modelReference = null;
 
     this.toggleTexturedModel = this.toggleTexturedModel.bind(this);
+    this.handleMouseClick = this.handleMouseClick.bind(this);
   }
 
   assetsPath(){
@@ -52,6 +57,10 @@ class ModelView extends React.Component {
     return this.props.task.available_assets.indexOf('orthophoto.tif') !== -1;
   }
 
+  hasTexturedModel(){
+    return this.props.task.available_assets.indexOf('textured_model.zip') !== -1;
+  }
+
   objFilePath(){
     let file =  this.hasGeoreferencedAssets() ?
                 'odm_textured_model_geo.obj' : 
@@ -65,8 +74,14 @@ class ModelView extends React.Component {
     return 'odm_textured_model.mtl';
   }
 
+  handleMouseClick(e){
+    // Make sure the share popup closes
+    if (this.shareButton) this.shareButton.hidePopup();
+  }
+
   componentDidMount() {
     let container = this.container;
+    if (!container) return; // Enzyme tests don't have support for all WebGL methods so we just skip this
 
     window.viewer = new Potree.Viewer(container);
     viewer.setEDLEnabled(true);
@@ -170,6 +185,7 @@ class ModelView extends React.Component {
   // React render
   render(){
     const showSwitchModeButton = this.hasGeoreferencedAssets();
+    const showTextureModelButton = this.hasTexturedModel();
     const hideWithTexturedModel = {display: this.state.showTexturedModel ? "none" : "block"};
 
     return (<div className="model-view">
@@ -178,7 +194,6 @@ class ModelView extends React.Component {
             className="container"
             style={{height: "100%", width: "100%", position: "relative"}} 
             onContextMenu={(e) => {e.preventDefault();}}>
-
               <div 
                 id="potree_render_area" 
                 ref={(domNode) => { this.container = domNode; }}>
@@ -189,7 +204,7 @@ class ModelView extends React.Component {
                   </div>
               </div>
 
-              <div id="potree_sidebar_container">
+              <div id="potree_sidebar_container" onClick={this.handleMouseClick}>
 
                 <div id="sidebar_root" 
                   className="navmenu navmenu-default navmenu-fixed-left unselectable">
@@ -198,18 +213,34 @@ class ModelView extends React.Component {
                   </span>
 
                   <div className="action-buttons">
-                    <div className="textured-model-chkbox-container">
+                    <div className={"textured-model-chkbox-container " + (!showTextureModelButton ? "hide" : "")}>
                       <label><input 
                                 type="checkbox" 
                                 onChange={this.toggleTexturedModel}
                                 checked={this.state.showTexturedModel}
                               /> Textured Model</label>
                     </div>
-                    <AssetDownloadButtons task={this.props.task} direction="down" />
-                    {showSwitchModeButton ? 
-                      <SwitchModeButton 
-                        task={this.props.task}
-                        type="modelToMap" /> : ""}
+                    <AssetDownloadButtons 
+                      task={this.props.task} 
+                      direction="down" 
+                      buttonClass="btn-secondary" />
+                    
+                    <div className="action-buttons-row">
+                      {(!this.props.public) ? 
+                        <ShareButton 
+                          ref={(ref) => { this.shareButton = ref; }}
+                          task={this.props.task} 
+                          popupPlacement="bottom"
+                          linksTarget="3d"
+                        />
+                      : ""}
+                      {showSwitchModeButton ? 
+                        <SwitchModeButton 
+                          public={this.props.public}
+                          style={{marginLeft: this.props.public ? '0' : '76px'}}
+                          task={this.props.task}
+                          type="modelToMap" /> : ""}
+                    </div>
                   </div>
 
                   <div className="accordion">

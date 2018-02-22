@@ -2,16 +2,24 @@ import '../css/ProjectListItem.scss';
 import React from 'react';
 import update from 'immutability-helper';
 import TaskList from './TaskList';
-import EditTaskPanel from './EditTaskPanel';
+import NewTaskPanel from './NewTaskPanel';
 import UploadProgressBar from './UploadProgressBar';
+import ProgressBar from './ProgressBar';
 import ErrorMessage from './ErrorMessage';
 import EditProjectDialog from './EditProjectDialog';
 import Dropzone from '../vendor/dropzone';
 import csrf from '../django/csrf';
 import HistoryNav from '../classes/HistoryNav';
+import PropTypes from 'prop-types';
 import $ from 'jquery';
 
 class ProjectListItem extends React.Component {
+  static propTypes = {
+      history: PropTypes.object.isRequired,
+      data: PropTypes.object.isRequired, // project json
+      onDelete: PropTypes.func
+  }
+
   constructor(props){
     super(props);
 
@@ -19,7 +27,6 @@ class ProjectListItem extends React.Component {
 
     this.state = {
       showTaskList: this.historyNav.isValueInQSList("project_task_open", props.data.id),
-      updatingTask: false,
       upload: this.getDefaultUploadState(),
       error: "",
       data: props.data,
@@ -27,7 +34,6 @@ class ProjectListItem extends React.Component {
     };
 
     this.toggleTaskList = this.toggleTaskList.bind(this);
-    this.handleUpload = this.handleUpload.bind(this);
     this.closeUploadError = this.closeUploadError.bind(this);
     this.cancelUpload = this.cancelUpload.bind(this);
     this.handleTaskSaved = this.handleTaskSaved.bind(this);
@@ -57,7 +63,6 @@ class ProjectListItem extends React.Component {
   }
 
   componentWillUnmount(){
-    if (this.updateTaskRequest) this.updateTaskRequest.abort();
     if (this.deleteProjectRequest) this.deleteProjectRequest.abort();
     if (this.refreshRequest) this.refreshRequest.abort();
   }
@@ -65,14 +70,14 @@ class ProjectListItem extends React.Component {
   getDefaultUploadState(){
     return {
       uploading: false,
-      showEditTask: false,
+      editing: false,
+      resizing: false,
+      resizedImages: 0,
       error: "",
       progress: 0,
       totalCount: 0,
       totalBytes: 0,
-      totalBytesSent: 0,
-      savedTaskInfo: false,
-      taskId: null
+      totalBytesSent: 0
     };
   }
 
@@ -99,12 +104,14 @@ class ProjectListItem extends React.Component {
       this.dz = new Dropzone(this.dropzone, {
           paramName: "images",
           url : `/api/projects/${this.state.data.id}/tasks/`,
-          parallelUploads: 9999999,
+          parallelUploads: 2147483647,
           uploadMultiple: true,
           acceptedFiles: "image/*, .txt",
-          autoProcessQueue: true,
+          autoProcessQueue: false,
           createImageThumbnails: false,
           clickable: this.uploadButton,
+          chunkSize: 2147483647,
+          timeout: 2147483647,
           
           headers: {
             [csrf.header]: csrf.token
@@ -116,16 +123,17 @@ class ProjectListItem extends React.Component {
             progress, totalBytes, totalBytesSent
           });
         })
-        .on("addedfile", () => {
+        .on("addedfiles", files => {
           this.setUploadState({
-            totalCount: this.state.upload.totalCount + 1
+            editing: true,
+            totalCount: this.state.upload.totalCount + files.length
           });
         })
-        .on("processingmultiple", () => {
-          this.setUploadState({
-            uploading: true,
-            showEditTask: true
-          })
+        .on("transformcompleted", (total) => {
+          this.setUploadState({resizedImages: total});
+        })
+        .on("transformend", () => {
+          this.setUploadState({resizing: false, uploading: true});
         })
         .on("completemultiple", (files) => {
           // Check
@@ -134,28 +142,24 @@ class ProjectListItem extends React.Component {
           // All files have uploaded!
           if (success){
             this.setUploadState({uploading: false});
-
             try{
               let response = JSON.parse(files[0].xhr.response);
               if (!response.id) throw new Error(`Expected id field, but none given (${response})`);
               
-              let taskId = response.id;
-              this.setUploadState({taskId});
-
-              // Update task information (if the user has completed this step)
-              if (this.state.upload.savedTaskInfo){
-                this.updateTaskInfo(taskId, this.editTaskPanel.getTaskInfo());
+              if (this.state.showTaskList){
+                this.taskList.refresh();
               }else{
-                // Need to wait for user to confirm task options
+                this.setState({showTaskList: true});
               }
+              this.resetUploadState();
+              this.refresh();
             }catch(e){
-              this.setUploadState({error: `Invalid response from server: ${e.message}`})
+              this.setUploadState({error: `Invalid response from server: ${e.message}`, uploading: false})
             }
-
           }else{
             this.setUploadState({
               uploading: false,
-              error: "Could not upload all files. An error occured. Please try again."
+              error: "Could not upload all files. An error occurred. Please try again."
             });
           }
         })
@@ -163,47 +167,21 @@ class ProjectListItem extends React.Component {
           this.resetUploadState();
         })
         .on("dragenter", () => {
-          this.resetUploadState();
+          if (!this.state.upload.editing){
+            this.resetUploadState();
+          }
         })
         .on("sending", (file, xhr, formData) => {
-          if (!formData.has("auto_processing_node")){
-            formData.append('auto_processing_node', "false");
-          }
+          const taskInfo = this.dz._taskInfo;
+
+          // Safari does not have support for has on FormData
+          // as of December 2017
+          if (!formData.has || !formData.has("name")) formData.append("name", taskInfo.name);
+          if (!formData.has || !formData.has("options")) formData.append("options", JSON.stringify(taskInfo.options));
+          if (!formData.has || !formData.has("processing_node")) formData.append("processing_node", taskInfo.selectedNode.id);
+          if (!formData.has || !formData.has("auto_processing_node")) formData.append("auto_processing_node", taskInfo.selectedNode.key == "auto");
         });
     }
-  }
-
-  updateTaskInfo(taskId, taskInfo){
-    if (!taskId) throw new Error("taskId is not set");
-    if (!taskInfo) throw new Error("taskId is not set");
-    
-    this.setUploadState({showEditTask: false});
-    this.setState({updatingTask: true});
-
-    this.updateTaskRequest = 
-      $.ajax({
-        url: `/api/projects/${this.state.data.id}/tasks/${this.state.upload.taskId}/`,
-        contentType: 'application/json',
-        data: JSON.stringify({
-          name: taskInfo.name,
-          options: taskInfo.options,
-          processing_node: taskInfo.selectedNode.id,
-          auto_processing_node: taskInfo.selectedNode.key == "auto"
-        }),
-        dataType: 'json',
-        type: 'PATCH'
-      }).done((json) => {
-        if (this.state.showTaskList){
-          this.taskList.refresh();
-        }else{
-          this.setState({showTaskList: true});
-        }
-        this.refresh();
-      }).fail(() => {
-        this.setUploadState({error: "Could not update task information. Plese try again."});
-      }).always(() => {
-        this.setState({updatingTask: false});
-      });
   }
 
   setRef(prop){
@@ -230,10 +208,6 @@ class ProjectListItem extends React.Component {
     this.dz.removeAllFiles(true);
   }
 
-  handleUpload(){
-    this.resetUploadState();
-  }
-
   taskDeleted(){
     this.refresh();
   }
@@ -248,11 +222,32 @@ class ProjectListItem extends React.Component {
   }
 
   handleTaskSaved(taskInfo){
-    this.setUploadState({savedTaskInfo: true});
+    this.dz._taskInfo = taskInfo; // Allow us to access the task info from dz
 
-    // Has the upload finished?
-    if (!this.state.upload.uploading && this.state.upload.taskId !== null){
-      this.updateTaskInfo(this.state.upload.taskId, taskInfo);
+    // Update dropzone settings
+    if (taskInfo.resizeTo !== null){
+      this.dz.options.resizeWidth = taskInfo.resizeTo;
+      this.dz.options.resizeQuality = 1.0;
+
+      this.setUploadState({resizing: true, editing: false});
+    }else{
+      this.setUploadState({uploading: true, editing: false});
+    }
+
+    setTimeout(() => {
+      this.dz.processQueue();
+    }, 1);
+  }
+
+  handleTaskCanceled = () => {
+    this.dz.removeAllFiles(true);
+    this.resetUploadState();
+  }
+
+  handleUpload = () => {
+    // Not a second click for adding more files?
+    if (!this.state.upload.editing){
+      this.handleTaskCanceled();
     }
   }
 
@@ -307,16 +302,16 @@ class ProjectListItem extends React.Component {
             {this.hasPermission("add") ? 
               <button type="button" 
                       className={"btn btn-primary btn-sm " + (this.state.upload.uploading ? "hide" : "")} 
-                      onClick={this.handleUpload} 
+                      onClick={this.handleUpload}
                       ref={this.setRef("uploadButton")}>
                 <i className="glyphicon glyphicon-upload"></i>
-                Upload Images and GCP
+                Select Images and GCP
               </button>
             : ""}
-              
+
             <button disabled={this.state.upload.error !== ""} 
-                    type="button" 
-                    className={"btn btn-primary btn-sm " + (!this.state.upload.uploading ? "hide" : "")} 
+                    type="button"
+                    className={"btn btn-danger btn-sm " + (!this.state.upload.uploading ? "hide" : "")} 
                     onClick={this.cancelUpload}>
               <i className="glyphicon glyphicon-remove-circle"></i>
               Cancel Upload
@@ -350,7 +345,18 @@ class ProjectListItem extends React.Component {
         </div>
         <i className="drag-drop-icon fa fa-inbox"></i>
         <div className="row">
-          {this.state.upload.showEditTask ? <UploadProgressBar {...this.state.upload}/> : ""}
+          {this.state.upload.uploading ? <UploadProgressBar {...this.state.upload}/> : ""}
+          {this.state.upload.resizing ? 
+            <ProgressBar
+              current={this.state.upload.resizedImages}
+              total={this.state.upload.totalCount}
+              template={(info) => `Resized ${info.current} of ${info.total} images. Your browser might slow down during this process.`}
+            /> 
+          : ""}
+
+          {this.state.upload.uploading || this.state.upload.resizing ? 
+            <i className="fa fa-refresh fa-spin fa-fw" />
+            : ""}
           
           {this.state.upload.error !== "" ? 
             <div className="alert alert-warning alert-dismissible">
@@ -359,16 +365,13 @@ class ProjectListItem extends React.Component {
             </div>
             : ""}
 
-          {this.state.upload.showEditTask ? 
-            <EditTaskPanel 
-              uploading={this.state.upload.uploading} 
+          {this.state.upload.editing ? 
+            <NewTaskPanel
               onSave={this.handleTaskSaved}
-              ref={this.setRef("editTaskPanel")}
+              onCancel={this.handleTaskCanceled}
+              filesCount={this.state.upload.totalCount}
+              showResize={true}
             />
-          : ""}
-
-          {this.state.updatingTask ? 
-            <span>Updating task information... <i className="fa fa-refresh fa-spin fa-fw"></i></span>
           : ""}
 
           {this.state.showTaskList ? 

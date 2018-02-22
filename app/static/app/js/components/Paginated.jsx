@@ -1,6 +1,7 @@
 import React from 'react';
 import update from 'immutability-helper';
 import HistoryNav from '../classes/HistoryNav';
+import PropTypes from 'prop-types';
 
 class Paginated extends React.Component{
   static defaultProps = {
@@ -8,8 +9,8 @@ class Paginated extends React.Component{
   };
 
   static propTypes = {
-      history: React.PropTypes.object.isRequired, // reference to the history object coming from the route this component is bound to
-      currentPage: React.PropTypes.number
+      history: PropTypes.object.isRequired, // reference to the history object coming from the route this component is bound to
+      currentPage: PropTypes.number
   };
 
   constructor(props){
@@ -33,7 +34,9 @@ class Paginated extends React.Component{
   }
 
   totalPages(itemsPerPage, totalItems){
-    return Math.ceil(totalItems / itemsPerPage);
+    let pages = Math.ceil(totalItems / itemsPerPage);
+    if (pages < 1) pages = 1;
+    return pages;
   }
 
   setPaginationState(props, done){

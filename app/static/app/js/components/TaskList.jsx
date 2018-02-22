@@ -1,8 +1,16 @@
 import React from 'react';
 import '../css/TaskList.scss';
 import TaskListItem from './TaskListItem';
+import PropTypes from 'prop-types';
+import $ from 'jquery';
 
 class TaskList extends React.Component {
+  static propTypes = {
+      history: PropTypes.object.isRequired,
+      source: PropTypes.string.isRequired, // URL where to load task list
+      onDelete: PropTypes.func
+  }
+
   constructor(props){
     super(props);
 
